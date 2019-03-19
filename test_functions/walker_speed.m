@@ -8,6 +8,7 @@ function ret = walker_speed(hyperparams)
 try
 ret = NaN;
 cnt = 0;
+tic
 while isnan(ret) && cnt < 2
 ret = walker_main(0,hyperparams(1),'demo',reshape(hyperparams(2:end), [3,8]));
 close all;
@@ -16,9 +17,11 @@ end
 if isnan(ret)
     ret = 0;
 end
+disp('---------***Time for evaluating walker speed')
+toc
 
 catch MI
-    disp(MI)
+%     disp(MI)
     allerror = [];
     if exist('error.mat','file') == 2
         load('error.mat');

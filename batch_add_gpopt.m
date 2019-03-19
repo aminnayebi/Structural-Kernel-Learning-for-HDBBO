@@ -1,6 +1,6 @@
 % Copyright (c) 2017 Zi Wang, Chengtao Li
 % See also: gpopt.m
-function results = batch_add_gpopt(objective, xmin, xmax, T, initx, inity, options)
+function [max_fs, cons_time] = batch_add_gpopt(objective, xmin, xmax, T, initx, inity, options, fl_name)
 % This function maximizes the function objective using BO with add-GP and 
 % returns results as a cell of size 7, including the inferred argmax points 
 % (guesses),the function values of the inferred argmax points (guessvals), the
@@ -72,6 +72,8 @@ end
 KernelMatrixInv = cell(1);
 
 %% start optimization
+max_fs=zeros(1,T-tstart);
+cons_time=zeros(6,T-tstart);
 for t = tstart+1 : T
     
     xnext = zeros(1, size(xx,2));
@@ -93,7 +95,9 @@ for t = tstart+1 : T
         [z, hyp] = sampleStructPriors(xx, yy, options);
         options = get_grid(z, options);
         options.z = z;
-        
+        disp('****Time for learning structure after every minibatch')
+        toc
+        cons_time(1,t)=toc;
         extra_time = [extra_time; toc];
         
         tic
@@ -120,17 +124,29 @@ for t = tstart+1 : T
 
             xnext(coords) = optimum;
         end
+        disp('****Time for optimization group by group')
+        toc
+        cons_time(2,t)=toc;
         choose_time = [choose_time; toc];
-
+        
+        tic
         xx = [ xx ; xnext ];
         yy = [ yy ; objective(xnext) + rand(1) * options.noiselevel];
+        disp('***Time for evaluation obj function')
+        toc
+        cons_time(3,t)=toc;
         
+        tic
         % update inverse gram matrix
         KernelMatrix = compute_gram(xx, hyp, 1, z);
         KernelMatrixInv{1} = chol2invchol(KernelMatrix);
         
-        xnextbatch = zeros(options.batch_size-1, size(xx,2));
+        disp('***Time for update inverse gram matrix')
+        toc
+        cons_time(4,t)=toc;
         
+        xnextbatch = zeros(options.batch_size-1, size(xx,2));
+        tic
         for i = 1:length(all_cat)
             coords = (z==all_cat(i));
             xx_sub = xx(:,coords);
@@ -168,6 +184,11 @@ for t = tstart+1 : T
             xnextbatch(1:length(C),coords) = options.curr_grid(C,:);
         end
         
+        disp('***Time for maximizing the acquisition function based on the first part of bo_method')
+        toc
+        cons_time(5,t)=toc;
+        
+        tic
         if ~isempty(strfind(options.bo_method, 'fnc'))
             xnextbatchbyval = zeros(options.batch_size-1, size(xx,2));
             vals = zeros(options.batch_size-1, 1);
@@ -234,6 +255,10 @@ for t = tstart+1 : T
             xnextbatch = xnextbatchbyval;
         end
         
+        disp('****Time of combination based on the last part of bo_method')
+        toc
+        cons_time(6,t)=toc;
+        
         xx = [ xx; xnextbatch ];
         for i = 1:(options.batch_size-1)
             yy = [ yy; objective(xnextbatch(i,:)) + randn(1)*options.noiselevel];
@@ -241,6 +266,7 @@ for t = tstart+1 : T
     end
         
     yy_to_show = max(yy);
+    max_fs(t)=yy_to_show;
     disp([num2str(t) ': ' 'val=' num2str(yy_to_show)])
     % save result every a few iterations
     if ~isempty(options.savefilenm) == 0
@@ -253,4 +279,10 @@ for t = tstart+1 : T
         options.savefilenm
         save(options.savefilenm, 'results');
     end
+    csvwrite(fl_name,[max_fs;cons_time]);
+    disp('iter****************************************************************')
+    disp('********************************************************************')
+    disp(t)
+    disp('********************************************************************')
+    disp('********************************************************************')
 end
